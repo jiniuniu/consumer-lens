@@ -1,0 +1,10 @@
+# 不能有绝对路径 —— 别人装上就是死链。
+#
+# dshHomePath 是 boot 层全局提供的服务，!!js 表达式里可直接用；
+# 那个沙箱是 ESM eval，没有 require，也别在这里写 node:path。
+- insert:
+    - id: consumer-lens
+      name: '@consumer-lens/lens'
+      config:
+        apiBase: !!js 'process.env.CL_API_BASE ?? "http://localhost:8000"'
+        dataDir: !!js 'process.env.CL_DATA_DIR ?? dshHomePath("consumer-lens/data")'
