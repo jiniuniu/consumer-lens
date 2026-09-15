@@ -1,3 +1,8 @@
 node_modules/
 *.tgz
 .DS_Store
+
+# 构建产物 —— 源码在 src/，`npm run build` 生成这个目录。
+# 不进 git（会和源码打架、每次 diff 都是噪声），但**要进 npm 包**
+# （package.json 的 files 里有它）—— 用户装到的是产物，不需要自己 build。
+lib/
