@@ -17,7 +17,8 @@
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
-    "test": "node build.js && node tests/bundle.spec.js",
+    "lint": "eslint src build.js tests",
+    "test": "npm run lint && node build.js && node tests/components.spec.mjs && node tests/bundle.spec.js",
     "prepublishOnly": "npm run test"
   },
   "dsh": {
@@ -52,7 +53,9 @@
     "@deepseek-ai/schemastery": "^3.18.2"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
+    "react": "^18.3.1"
   },
   "allowScripts": {
     "esbuild@0.28.2": true
