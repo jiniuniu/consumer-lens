@@ -122,13 +122,43 @@ id 就是搜索输出里每行末尾 `<>` 中那串，已带 `t3_` 前缀，直�
 ```
 cl_save {
   kind: "cl-reddit-pain",
-  id: "<产品 slug>",
+  slug: "<产品 slug>",
   data: { ... }
 }
 ```
 
 **slug 由你生成** —— 小写英文 + 短横线，看得出是什么产品：
-`portable-steamer`、`cat-water-fountain`。同一个产品重跑要用同一个 slug（会覆盖）。
+`portable-steamer`、`cat-water-fountain`。
+
+⚠️ **slug 只是给人读的标签，不构成任何关联。** 它不是文件名，重跑不会覆盖；
+但也**不要指望同一个 slug 能把多次运行聚成一组** —— 面板不按 slug 分组。
+研究之间的关系由下面那个 `from_run` 表达（代码透传的 run_id，不是你编的），
+所以 slug 换个写法不会出错，只是列表上那行字不一样。
+
+**如果这个品是从某次选品信号里挖出来的**，把那次的 `run_id` 填进 `from_run`：
+
+```
+cl_save {
+  kind: "cl-reddit-pain",
+  slug: "portable-fishfinder",
+  from_run: "sig_20260914_c81e",   ← /cl-reddit-signal 那一步回显的
+  data: { ... }
+}
+```
+
+面板靠它把「这个品是从哪个人群挖出来的」串起来。独立跑的不填。
+
+⚠️ **调用参数里可能已经带了它。** 用户在面板的信号报告上点「挖这个品的痛点」，
+打进对话框的是：
+
+```
+/cl-reddit-pain 耐高温硅胶戒指 sig_20260914_c81e
+                └─ 品类词 ─┘  └─ 这个要原样填进 from_run ─┘
+```
+
+第二个参数形如 `sig_YYYYMMDD_xxxx` 就是上一步的 run_id，**原样透传**，
+不要改写、不要当成检索词的一部分。用户手打 `/cl-reddit-pain <产品>` 时
+没有这个参数，那就是独立跑的，`from_run` 留空。
 
 ### data 的形状
 
