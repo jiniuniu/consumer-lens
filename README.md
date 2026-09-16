@@ -2,26 +2,28 @@
 
 面向跨境卖家的消费者洞察 —— 一个 [dsh](https://github.com/deepseek-ai/deepseek-harness) 插件。
 
-去 Reddit 和 Instagram 挖买家在说什么：他们在骂什么、买之前顾虑什么、
-有什么东西想买但买不到。产出可以直接抄进详情页的原话和判断。
+去 Reddit 和 Instagram 挖买家在说什么：买了之后在骂什么、买之前顾虑什么、
+有什么东西想买但买不到。
 
-**数据只存在你自己的机器上。** 云端只记调用次数，看不到你在研究什么。
+**数据只存在你自己的机器上。**
 
 ---
 
-## 装
+## 安装
+
+前置：Node ≥ 20、[dsh](https://github.com/deepseek-ai/deepseek-harness)。
 
 ```bash
-npm i -g @deepseek-ai/dsh                              # 如果还没有
-dsh plugin --profile lens add @consumer-lens/lens
+npm i -g @deepseek-ai/dsh                                  # 如果还没有
+
+dsh plugin --profile lens add github:jiniuniu/consumer-lens
 dsh --profile lens -- --port 5599
 ```
 
 `--profile lens` 是隔离单位 —— 你原有的 dsh 环境一行不动。
 
-浏览器打开后，右栏 **Consumer Lens** → 账户那一格带**橙色角标**的就是登录
-入口。手机号 + 验证码，**新号自动注册送 20 积分**，不用邀请码、不用手动填
-任何 key。
+浏览器打开 dsh 打印的地址，右栏 **Consumer Lens** → 账户那一格带**橙色角标**
+的就是登录入口。手机号收验证码，新号自动注册送 20 积分。
 
 ---
 
@@ -33,7 +35,6 @@ dsh --profile lens -- --port 5599
 /cl-reddit-pain 便携挂烫机
 ```
 
-模型自己走完：定位社区 → 取帖 → 逐条判读 → 聚成痛点簇 → 落盘。
 跑完在右栏面板里看报告。
 
 | Skill | 回答什么 |
@@ -41,32 +42,17 @@ dsh --profile lens -- --port 5599
 | `/cl-reddit-audience` | 这个爱好/人群该去哪些社区找 |
 | `/cl-reddit-signal` | 有人明确想要、但买不到的东西 |
 | `/cl-reddit-pain` | 这个品类的买家在骂什么 |
-| `/cl-ig-pain` | 刷到还没买的人在顾虑什么（详情页要先答什么） |
-
-面板**只读**：跑分析是你在对话框里说话触发的，面板负责把结果渲染成能看的
-报告，并且知道哪些跑过、哪些没跑过。
+| `/cl-ig-pain` | 刷到还没买的人在顾虑什么 |
 
 ---
 
-## 数据在哪
+## 更新 / 卸载
 
+```bash
+dsh plugin --profile lens update @consumer-lens/lens    # 更新后要重启 dsh
+rm -rf ~/.dsh/profiles/lens                             # 卸载
+rm -rf ~/.dsh/consumer-lens                             # 数据（想留就别删）
 ```
-~/.dsh/consumer-lens/data/<kind>/<run-id>.json
-```
-
-一堆 JSON 平铺在目录里，文件名就是主键。换机器拷走这个目录就行。
-
-重跑同一个产品是**新增一条**，不覆盖上一次 —— 这类研究本身有时间维度，
-两周后再跑一次能看出变化。
-
----
-
-## 要花钱吗
-
-取数走托管服务端（它持有上游 API key，你不需要自己配）。按**积分**计费，
-1 次上游调用起步 1 积分。新账号送 20 积分，余额和用量在面板的「我的」里看。
-
-**判读不花积分** —— 那一步是你 dsh 里的模型干的，用你自己的额度。
 
 ---
 
