@@ -72,5 +72,13 @@
   "allowScripts": {
     "esbuild@0.28.2": true
   },
-  "author": "jiniuniu <nianjiniuniu@gmail.com>"
+  "author": "jiniuniu <nianjiniuniu@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiniuniu/consumer-lens.git"
+  },
+  "homepage": "https://github.com/jiniuniu/consumer-lens#readme",
+  "bugs": {
+    "url": "https://github.com/jiniuniu/consumer-lens/issues"
+  }
 }
