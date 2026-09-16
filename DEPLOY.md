@@ -66,7 +66,27 @@ dsh plugin --profile lens add github:jiniuniu/consumer-lens
 ```
 
 npm 会克隆仓库、装 devDependencies、跑 `prepare` 构建出 `lib/`，然后装进去。
-比 npm 慢（实测 20 秒，要下载 esbuild 并构建），但拿到的永远是 main 最新代码。
+比 npm 慢（实测 15~20 秒，要下载 esbuild 并构建），但拿到的永远是 main 最新代码。
+
+⚠️ **新建的 profile 缺 `@deepseek-ai/dsh-web-app`，要手动补进 `bundles`。**
+
+`dsh plugin add` 只会把插件写进 `bundles`，不会加框架包。缺了它启动**没有
+任何报错**：日志 0 字节、没有 URL、面板起不来。实测踩过。
+
+编辑 `~/.dsh/profiles/<name>/package.json`：
+
+```json
+"bundles": [
+  "@deepseek-ai/dsh-base",
+  "@deepseek-ai/dsh-web-app",
+  "@consumer-lens/lens"
+]
+```
+
+**只改这一行，不要 `dsh plugin add @deepseek-ai/dsh-web-app`。**
+那个包随全局 dsh 一起发（在 `dsh` 的 node_modules 里），profile 里装会去
+registry 拉，而 npm 上那份 `0.0.1-rc.1` 依赖 `@deepseek-ai/dsh-frontend`
+—— 那个包已改名成 `dsh-web-frontend`，registry 上是 404，于是 pnpm 直接失败。
 
 ⚠️ **`prepare` 这一行不能删。** 删了从 GitHub 装只能拿到 8 个文件
 （`lib/` 不在 git 里），插件加载不了，而且**不会报错** —— 表现为面板空白。

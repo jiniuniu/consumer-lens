@@ -17,6 +17,24 @@
 npm i -g @deepseek-ai/dsh                                  # 如果还没有
 
 dsh plugin --profile lens add github:jiniuniu/consumer-lens
+```
+
+然后编辑 `~/.dsh/profiles/lens/package.json`，在 `bundles` 里补一行
+`@deepseek-ai/dsh-web-app`（面板要靠它，`dsh plugin add` 不会自动加）：
+
+```json
+"bundles": [
+  "@deepseek-ai/dsh-base",
+  "@deepseek-ai/dsh-web-app",
+  "@consumer-lens/lens"
+]
+```
+
+> 只改这一行就行，**不要去 `npm i` 装它** —— 它随全局 dsh 一起发，
+> profile 里装反而会撞上 npm 上那个坏掉的旧版（依赖一个已改名、
+> registry 上不存在的包）。
+
+```bash
 dsh --profile lens -- --port 5599
 ```
 
