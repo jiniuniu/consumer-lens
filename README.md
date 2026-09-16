@@ -11,16 +11,31 @@
 
 ## 安装
 
-前置：Node ≥ 20、[dsh](https://github.com/deepseek-ai/deepseek-harness)。
+```bash
+curl -fsSL https://raw.githubusercontent.com/jiniuniu/consumer-lens/main/install.sh | bash
+```
+
+检查 Node（需要 ≥ 20）、装 dsh、装插件、配好 profile。重复跑就是更新。
+
+装完按提示启动：
+
+```bash
+dsh --profile lens -- --port 5599
+```
+
+浏览器打开面板后，右栏 **Consumer Lens** → 账户那一格带**橙色角标**的就是
+登录入口。手机号收验证码，新号自动注册送 20 积分。
+
+<details>
+<summary>手动装（不想跑脚本）</summary>
 
 ```bash
 npm i -g @deepseek-ai/dsh                                  # 如果还没有
-
 dsh plugin --profile lens add github:jiniuniu/consumer-lens
 ```
 
 然后编辑 `~/.dsh/profiles/lens/package.json`，在 `bundles` 里补一行
-`@deepseek-ai/dsh-web-app`（面板要靠它，`dsh plugin add` 不会自动加）：
+`@deepseek-ai/dsh-web-app`：
 
 ```json
 "bundles": [
@@ -30,18 +45,11 @@ dsh plugin --profile lens add github:jiniuniu/consumer-lens
 ]
 ```
 
-> 只改这一行就行，**不要去 `npm i` 装它** —— 它随全局 dsh 一起发，
-> profile 里装反而会撞上 npm 上那个坏掉的旧版（依赖一个已改名、
-> registry 上不存在的包）。
+`dsh plugin add` 不会自动加框架包，缺了它启动**没有任何报错**、面板也起不来。
+只改这一行就行，**不要去装它** —— 它随全局 dsh 一起发，profile 里装反而会
+撞上 npm 上那个坏掉的旧版。
 
-```bash
-dsh --profile lens -- --port 5599
-```
-
-`--profile lens` 是隔离单位 —— 你原有的 dsh 环境一行不动。
-
-浏览器打开 dsh 打印的地址，右栏 **Consumer Lens** → 账户那一格带**橙色角标**
-的就是登录入口。手机号收验证码，新号自动注册送 20 积分。
+</details>
 
 ---
 
