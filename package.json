@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "node build.js",
+    "prepare": "node build.js",
     "watch": "node build.js --watch",
     "lint": "eslint src build.js tests",
     "test": "npm run lint && node build.js && node tests/components.spec.mjs && node tests/bundle.spec.js",

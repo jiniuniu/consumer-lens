@@ -70,13 +70,6 @@ dsh --profile lens -- --port 5599
 
 ---
 
-## 桌面版
-
-不想敲命令的话，仓库里的 `launcher/` 能把它打包成一个 macOS app：双击启动、
-Dock 里有图标、⌘Q 退出。见 `launcher/README.md`。
-
----
-
 ## License
 
 MIT
