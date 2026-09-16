@@ -26,16 +26,18 @@ export async function call(ctx, apiBase, path, body = null, tokenRef = CL_TOKEN)
   // 每次调用重新解析，不缓存 —— 用户换 key 不用重启 dsh
   const token = await resolveToken(ctx, tokenRef)
   if (!token) {
-    throw new Error(
-      `${tokenRef} 未配置。请在 dsh 的 设置 → 插件 → Consumer Lens 里填入 token。`,
+    // ★ 带一个机器可读的标记。面板靠它区分「没登录」和「真故障」——
+    // 靠匹配中文文案是脆的：改一个字面板就会把登录页显示成错误页。
+    const e = new Error(
+      '还没登录。请打开右栏的 Consumer Lens 面板，点「登录」用手机号登录。',
     )
+    e.code = 'not_logged_in'
+    throw e
   }
 
   const base = (apiBase || '').replace(/\/+$/, '')
   if (!base) {
-    throw new Error(
-      'API 地址未配置。请在 设置 → 插件 → Consumer Lens 里填写，或设 CL_API_BASE 环境变量。',
-    )
+    throw new Error('API 地址未配置。请设 CL_API_BASE 环境变量。')
   }
 
   let res
@@ -52,8 +54,7 @@ export async function call(ctx, apiBase, path, body = null, tokenRef = CL_TOKEN)
   } catch (error) {
     // 连不上是最常见的失败，而且模型完全猜不出原因 —— 把地址回显出来
     throw new Error(
-      `无法连接到 ${base}。请确认服务端在运行，或在 设置 → 插件 → Consumer Lens ` +
-        `检查 API 地址。（${String(error?.message ?? error)}）`,
+      `无法连接到 ${base}。请确认服务端在运行。（${String(error?.message ?? error)}）`,
     )
   }
 
@@ -66,7 +67,12 @@ export async function call(ctx, apiBase, path, body = null, tokenRef = CL_TOKEN)
   } catch {
     /* 非 JSON 响应，往下走通用文案 */
   }
-  if (detail?.message) throw new Error(detail.message)
+  if (detail?.message) {
+    const e = new Error(detail.message)
+    // 服务端说 401 就是没登录（token 被轮换掉、或库被清了）
+    if (res.status === 401) e.code = 'not_logged_in'
+    throw e
+  }
 
   throw new Error(`服务端返回 HTTP ${res.status}。稍后重试；持续失败说明服务端需要修复。`)
 }
@@ -94,4 +100,50 @@ async function resolveToken(ctx, ref = CL_TOKEN) {
     }
   }
   return process.env[ref] ?? ''
+}
+
+/**
+ * 打一个**不需要 token** 的端点 —— 登录用。
+ *
+ * 和 call() 分开而不是加个参数，因为两者的前提相反：call() 的第一件事是
+ * 「没有 token 就报错」，而这里的前提正是还没有 token。混在一起会让那句
+ * 「请先登录」的错误在登录请求自己身上触发。
+ *
+ * 错误文案的读者也不同：这些显示在设置卡上给**人**看，不经过模型。
+ */
+export async function callAnon(apiBase, path, body) {
+  const base = (apiBase || '').replace(/\/+$/, '')
+  if (!base) {
+    throw new Error('API 地址未配置。请设 CL_API_BASE 环境变量。')
+  }
+
+  let res
+  try {
+    res = await fetch(base + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-cl-client': CLIENT_VERSION },
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    throw new Error(
+      `无法连接到 ${base}。请确认服务端在运行。（${String(error?.message ?? error)}）`,
+    )
+  }
+
+  if (res.ok) return res.json()
+
+  let detail = null
+  try {
+    detail = (await res.json())?.detail
+  } catch {
+    /* 非 JSON 响应，往下走通用文案 */
+  }
+  if (detail?.message) {
+    // 节流要把 retry_after 带出去 —— 倒计时的权威在服务端，前端不自己算
+    const err = new Error(detail.message)
+    if (typeof detail.retry_after === 'number') err.retryAfter = detail.retry_after
+    throw err
+  }
+
+  throw new Error(`服务端返回 HTTP ${res.status}。稍后重试；持续失败说明服务端需要修复。`)
 }

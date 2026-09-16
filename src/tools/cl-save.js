@@ -129,6 +129,27 @@ function checkIgPain(data) {
     })
   })
   if (!data?.product) throw new Error('缺 product（产品名，面板标题要用）')
+
+  /**
+   * 封面图**整批都缺**才打回 —— 这是实测踩过的坑：一次真实运行的
+   * 48 条证据里 thumbnail_url 一条都没带，而 SKILL.md 里它是「可选」，
+   * 于是静默通过，面板上一张图都没有。IG 是图像平台，那张图常常
+   * 就是痛点本身。
+   *
+   * **不逐条卡**：评论类证据和 album（轮播，实测 0/9）本来就没有封面，
+   * 逐条卡会把正常情况也打回。只在「一条都没有」时报错 —— 那必然是
+   * 透传时整个字段被漏掉了，不是数据本身没有。
+   */
+  const ev = pains.flatMap((p) => p.evidence ?? [])
+  const posts = ev.filter((e) => e?.source_type !== 'comment')
+  if (posts.length > 0 && posts.every((e) => !e?.thumbnail_url)) {
+    throw new Error(
+      `${posts.length} 条帖子证据里一条都没有 thumbnail_url —— 这个字段要从`
+      + ' cl_ig_hashtag / cl_ig_comments 的输出里逐条透传，面板靠它渲染封面图。'
+      + '（评论类证据和 album 轮播没有封面是正常的，但不可能整批都没有。）'
+      + ' 回到工具输出里把每条证据对应的 thumbnail_url 补上再存。',
+    )
+  }
   return pains.length
 }
 

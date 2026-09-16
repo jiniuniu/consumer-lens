@@ -7,7 +7,7 @@
  * 报告混在一起，按 mod 分发会拿 AudienceReport 去渲染痛点。
  */
 import { el, useState, useEffect, useCallback, useRef } from './react.js'
-import { POLL_MS, CL_TOKEN } from './constants.js'
+import { POLL_MS, API } from './constants.js'
 import { S } from './styles.js'
 import { call, sendToConversation } from './api.js'
 import { MODULES, SIGNAL, ACCOUNT, rowMeta, EmptyHint } from './modules.js'
@@ -76,36 +76,46 @@ function LensTab(props) {
     return () => { alive = false; clearInterval(timer) }
   }, [reload])
 
-  // token 配没配好 —— 没配的话面板能打开但跑不动，要在首页就说清楚，
-  // 否则用户只会看到一个空列表，不知道缺什么。
+  /**
+   * 登录了没。
+   *
+   * **走 /account 而不是 credentials.describe()。** 原来用后者,但 LensTab 的
+   * inject 里只有 sidebarRightTabs/slots/sessions —— 没有 `remote`,
+   * 于是 ctx.get('remote') 永远是 undefined、ready 永远停在 null、
+   * 角标永远不出现（这就是「图标不显示状态」的原因）。
+   *
+   * 而把 'remote' 加进 inject 是错的解法：那会让远端连接没就绪时
+   * **整个面板都不出现**,为了一个角标赔掉主功能。
+   *
+   * /account 这条路更好：它本来就是面板唯一出网的路由,host 在没 token 时
+   * 回 `code: 'not_logged_in'`,正是我们要的答案。顺带它还能反映
+   * 「token 有但失效了」（401）—— describe() 只知道「配没配过」,不知道好不好使。
+   */
   const [ready, setReady] = useState(null)   // null=还没查出来
+  const checkRef = useRef(null)
   useEffect(() => {
     let alive = true
 
-    // ⚠️ 必须 ctx.get('remote')，不能写 ctx.remote?.…
-    //
-    // cordis 铁律（见文件顶部 sendToConversation 的注释）：裸属性访问
-    // ctx.foo 只在 foo 写进 inject 时才合法，否则 proxy 的 get trap
-    // **直接抛**。`?.` 挡不住 —— 异常在读 .remote 那一刻就抛了，
-    // 可选链根本没轮到。而这里是渲染期，一抛整个面板就白屏。
-    //
-    // LensTab 的 inject 里只有 sidebarRightTabs/slots/sessions，
-    // remote 是可选的（连接就绪后才有），所以只能用 get 查询。
-    const remote = ctx.get?.('remote')
-
     const check = async () => {
       try {
-        const list = await remote?.credentials?.describe?.([CL_TOKEN])
-        if (alive) setReady(list?.[0]?.configured === true)
+        const r = await fetch(`${API}/account`)
+        const d = await r.json().catch(() => ({}))
+        if (!alive) return
+        if (r.ok) return setReady(true)
+        if (d?.code === 'not_logged_in') return setReady(false)
+        setReady(null)          // 服务端连不上之类 —— 别吓唬用户
       } catch {
-        if (alive) setReady(null)   // 查不了就别吓唬用户
+        if (alive) setReady(null)
       }
     }
+    checkRef.current = check
     check()
+    return () => { alive = false }
+  }, [])
 
-    const off = remote?.$on?.('credentials/reference-updated', check)
-    return () => { alive = false; if (typeof off === 'function') off() }
-  }, [ctx])
+  // 登录/登出后立刻回读，不等 credentials 事件 —— 那个事件由 host 侧的
+  // set()/unset() 触发，但从面板发起的那次我们自己就知道，等一轮没必要。
+  const recheck = useCallback(() => { checkRef.current?.() }, [])
 
   // 选中一条就去读完整报告。404 = 还没分析，是正常状态不是错误。
   useEffect(() => {
@@ -133,17 +143,6 @@ function LensTab(props) {
     return el('div', { style: S.single },
       el('h2', { style: { ...S.h1, marginBottom: 16 } }, 'Consumer Lens'),
 
-      // 配置在标准位置：设置 → 插件 → Consumer Lens。
-      // 面板只负责告诉用户「缺了什么」，不自己做一套配置表单 ——
-      // 那会变成两个都要维护的入口。
-      ready === false
-        ? el('div', { style: S.warn },
-            el('div', { style: { fontWeight: 600, marginBottom: 3 } }, '还没配 token'),
-            el('div', { style: { opacity: 0.8, lineHeight: 1.6 } },
-              '打开 设置 → 插件 → Consumer Lens，填入 token 和 API 地址。'),
-          )
-        : null,
-
       el('div', { style: S.grid },
         MODULES.map((m) =>
           el('button', {
@@ -167,12 +166,16 @@ function LensTab(props) {
         el('button', {
           key: ACCOUNT,
           type: 'button',
-          title: '我的账户 —— 余额和用量',
+          // 未登录时这一格是**唯一的入口**，tooltip 要说「点这里登录」，
+          // 不能还说「余额和用量」—— 那是登录之后才有的东西。
+          title: ready === false
+            ? '点击登录 —— 手机号登录后即可使用'
+            : '我的账户 —— 余额和用量',
           onClick: () => { setMod(ACCOUNT); setPick(null) },
           style: S.appCell,
         },
-          accountIcon(56),
-          el('span', { style: S.appName }, '我的'),
+          accountIcon(56, ready),
+          el('span', { style: S.appName }, ready === false ? '登录' : '我的'),
         ),
       ),
     )
@@ -187,7 +190,7 @@ function LensTab(props) {
         title: '返回模块',
         style: { ...S.backBtn, marginBottom: 12 },
       }, '←'),
-      el(AccountPage),
+      el(AccountPage, { onAuthChanged: recheck }),
     )
   }
 

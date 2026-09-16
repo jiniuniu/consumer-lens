@@ -1,7 +1,7 @@
 {
   "name": "@consumer-lens/lens",
   "version": "0.1.0",
-  "description": "Consumer Lens —— 消费者洞察。第一版：Reddit 买家痛点。skill + tools + 面板，数据存本地。",
+  "description": "面向跨境卖家的消费者洞察 —— 去 Reddit 和 Instagram 挖买家在骂什么、顾虑什么、想买什么买不到。dsh 插件，数据存本地。",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -21,17 +21,11 @@
     "test": "npm run lint && node build.js && node tests/components.spec.mjs && node tests/bundle.spec.js",
     "prepublishOnly": "npm run test"
   },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-sidebar-right",
-        "@deepseek-ai/dsh-client-ui-session"
-      ],
-      "platform": "web"
-    }
+  "dependencies": {},
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
+    "react": "^18.3.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.2",
@@ -49,15 +43,34 @@
       "optional": true
     }
   },
-  "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.2"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   },
-  "devDependencies": {
-    "esbuild": "^0.28.2",
-    "eslint": "^10.10.0",
-    "react": "^18.3.1"
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "consumer-insights",
+    "reddit",
+    "instagram",
+    "cross-border-ecommerce",
+    "选品",
+    "消费者洞察"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-session"
+      ],
+      "platform": "web"
+    }
   },
   "allowScripts": {
     "esbuild@0.28.2": true
-  }
+  },
+  "author": "jiniuniu <nianjiniuniu@gmail.com>"
 }

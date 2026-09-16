@@ -49,6 +49,8 @@ const { rowMeta, MODULES, EmptyHint } = await import(R + 'modules.js')
 const { appIcon, BRAND } = await import(R + 'icons.js')
 const { TreeNode } = await import(R + 'TreeNode.js')
 const { AccountPage } = await import(R + 'AccountPage.js')
+const { LoginPanel } = await import(R + 'LoginPanel.js')
+const { accountIcon } = await import(R + 'icons.js')
 const { S } = await import(R + 'styles.js')
 
 const el = React.createElement
@@ -143,6 +145,57 @@ t('TreeNode', el(TreeNode, {
   depth: 0, pick: null, onPick() {},
 }), ['攀岩'])
 t('AccountPage', el(AccountPage, {}))
+// 登录面板两态。未登录那态是新用户看到的第一屏，渲染不出来等于注册不了。
+t('LoginPanel(未登录)', el(LoginPanel, { configured: false }), ['手机号', '获取验证码', '登录 / 注册'])
+t('LoginPanel(已登录)', el(LoginPanel, { configured: true }), ['已登录', '退出登录'])
+
+// 账户图标三态 —— 角标是「要不要点我」的唯一提示，画错了新用户就卡住
+/**
+ * 「没登录」必须走登录页，不能走错误页。
+ *
+ * 实测踩过：AccountPage 原来靠**匹配中文文案**判断（msg.includes('未登录')），
+ * 而 client-api 抛的是「还没登录。请打开右栏…」—— 一个字都没匹配上，
+ * 于是新用户看到的是「读不到账户信息」+ 一句让他去点登录的话，
+ * 而那个登录入口根本没渲染出来。死锁。
+ *
+ * 现在靠 host 透传的 `code: 'not_logged_in'`。这里守住整条链的三段。
+ */
+console.log('\n未登录判定')
+{
+  const fs = await import('node:fs')
+  const rd = (f) => fs.readFileSync(new URL('../' + f, import.meta.url).pathname, 'utf8')
+  const api = rd('src/client-api.js')
+  const host = rd('src/index.js')
+  const page = rd('src/client/AccountPage.js')
+
+  const checks = [
+    ['client-api 给没 token 打标记', api.includes("e.code = 'not_logged_in'")],
+    ['client-api 把 401 也算没登录', api.includes("if (res.status === 401) e.code = 'not_logged_in'")],
+    ['host 把 code 透传给面板', host.includes('code: error?.code')],
+    ['面板按 code 判定（不是猜文案）', page.includes("d?.code === 'not_logged_in'")],
+    ['面板不再匹配中文文案', !page.includes("msg.includes('未登录')")],
+  ]
+  for (const [name, ok] of checks) {
+    console.log(`  ${ok ? '✓' : '✗'} ${name}`)
+    if (!ok) fail += 1
+  }
+}
+
+console.log('\n账户图标')
+{
+  const shot = (v) => JSON.stringify(accountIcon(56, v))
+  const none = shot(null)
+  const out = shot(false)
+  const inn = shot(true)
+  // null 不画角标；false/true 各自有底色
+  const okNone = !none.includes('state-success') && !none.includes('state-warning')
+  const okOut = out.includes('state-warning')
+  const okIn = inn.includes('state-success')
+  console.log(`  null  无角标          ${okNone ? '✓' : '✗'}`)
+  console.log(`  false 橙色(去登录)    ${okOut ? '✓' : '✗'}`)
+  console.log(`  true  绿色(已登录)    ${okIn ? '✓' : '✗'}`)
+  if (!okNone || !okOut || !okIn) fail += 1
+}
 
 console.log('\n查表')
 

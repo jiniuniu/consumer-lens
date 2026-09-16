@@ -89,10 +89,24 @@ const appIcon = (kind, size = 56, off = false) => {
  * 数据源；账户是一个跟着主题走的描边人形，一眼看出不是数据源。
  * 给它也配一个橙紫底板反而会让人以为又多了一个平台。
  */
-const accountIcon = (size = 56) =>
-  el('span', {
+/**
+ * 账户图标 —— **自己带登录状态**。
+ *
+ * 这一格是首次登录的唯一入口（设置页那张卡已经撤掉），所以它必须在 grid 上
+ * 就说清楚「要不要点我」。三态：
+ *
+ *   null   还没查出来 —— 不画角标，避免闪一下红点又消失
+ *   false  未登录     —— 实心橙点，这是**行动号召**，不是错误
+ *   true   已登录     —— 绿色对勾
+ *
+ * 角标画在右下角而不是右上角：右上是系统通知的位置，用户会当成未读数。
+ */
+const accountIcon = (size = 56, loggedIn = null) => {
+  const dot = size * 0.3
+
+  return el('span', {
     style: {
-      width: size, height: size, flex: 'none',
+      width: size, height: size, flex: 'none', position: 'relative',
       borderRadius: size * 0.24,
       border: '1px solid var(--dsw-alias-border-l4, #e5e3df)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -107,7 +121,32 @@ const accountIcon = (size = 56) =>
       el('circle', { cx: 12, cy: 8, r: 3.6 }),
       el('path', { d: 'M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6' }),
     ),
+
+    loggedIn === null
+      ? null
+      : el('span', {
+          style: {
+            position: 'absolute', right: -2, bottom: -2,
+            width: dot, height: dot, borderRadius: '50%',
+            // 底色描边，让角标在任何背景上都切得干净
+            border: '2px solid var(--dsw-alias-bg-layer-3, #fff)',
+            background: loggedIn
+              ? 'var(--dsw-alias-state-success-primary, #1a9d4b)'
+              : 'var(--dsw-alias-state-warning-primary, #e8833a)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          },
+        },
+          loggedIn
+            ? el('svg', {
+                width: dot * 0.62, height: dot * 0.62, viewBox: '0 0 24 24',
+                fill: 'none', stroke: '#fff', strokeWidth: 4,
+                strokeLinecap: 'round', strokeLinejoin: 'round',
+                'aria-hidden': true, style: { display: 'block' },
+              }, el('path', { d: 'M20 6 9 17l-5-5' }))
+            : null,
+        ),
   )
+}
 
 
 /**

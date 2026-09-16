@@ -1,5 +1,5 @@
 /**
- * Consumer Lens —— 右栏一个 tab + 设置页一张卡片。
+ * Consumer Lens —— 右栏一个 tab。**没有设置卡片。**
  *
  * 面板**只读**：不自己跑分析，也不发起任务 —— 跑分析是用户在对话框里
  * 说话触发的（/cl-reddit-pain <产品>）。这样耗时操作、报错、中途追问
@@ -15,10 +15,8 @@
  *   ② 本体：ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id }, Body)
  * 两段都放进各自的 ctx.effect，注册的寿命就等于插件的寿命。
  */
-import { NAMESPACE } from './constants.js'
 import { makeLensIcon } from './icons.js'
 import { LensTab } from './LensTab.js'
-import { SettingsCard } from './SettingsCard.js'
 
 /** 这个 tab 类型在注册表里的身份。包名是天然的 id —— 全局唯一，重名会抛。 */
 const TAB_ID = '@consumer-lens/lens'
@@ -83,25 +81,15 @@ function apply(ctx) {
     )
   })
 
-  // ② 设置卡片 —— 要 remote.credentials，那是远端连接就绪后才有的服务。
-  // 等不到就只是没有卡片，右栏 tab 和 tools 都不受影响。
-  ctx.inject(['slots', 'remote', 'remote.credentials', 'settingsScope'], (sub) => {
-    // 插槽是 keyed 的，key 就是设置命名空间 —— 这正是「repository 外分发
-    // 的插件」贡献一张卡片的方式：它注册自己的命名空间，标签页把两者配对，
-    // 而不需要知道那个命名空间是什么意思。
-    //
-    // ⚠️ 签名和 tab 那边一样：第一个参数是**对象**（带 name），组件是
-    // 第二个参数。写成 register('名字', {component}) 不报错但永远不渲染。
-    sub.effect(() =>
-      sub.slots.inject('settings.plugin.item', () =>
-        sub.slots.register({
-          name: 'settings.plugin.item',
-          key: NAMESPACE,
-          inject: () => ({ ctx: sub }),
-        }, SettingsCard),
-      ),
-    )
-  })
+  // ② 没有设置卡片 —— 这是刻意的。
+  //
+  // 账号相关的一切都收在右栏「我的」那一格里：未登录时它带橙色角标、
+  // 点进去就是登录页。而服务端地址和 token **不再让用户填**：
+  //   - 地址是我们定的，填错只会得到「无法连接到 http://localhs:8000」
+  //   - token 是登录的产物，不是用户该持有的东西
+  // 留着那张卡等于把「怎么填对」这个问题丢回给用户，还多一个要维护的入口。
+  //
+  // 地址要改就用 CL_API_BASE 环境变量（见 src/index.js），那是给开发者的口子。
 }
 
 

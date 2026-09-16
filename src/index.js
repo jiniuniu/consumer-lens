@@ -18,9 +18,8 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import z from '@deepseek-ai/schemastery'
 
-import { call } from './client-api.js'
+import { call, callAnon, CL_TOKEN } from './client-api.js'
 import { createStore } from './store.js'
 import { register as registerSave } from './tools/cl-save.js'
 import { register as registerRedditAudience } from './tools/cl-reddit-audience.js'
@@ -61,59 +60,26 @@ export const inject = ['tools', 'skills']
 /**
  * 配置默认值。
  *
- * 不导出 Schemastery 的 Config schema —— 那会让这个包多一个运行时依赖，
- * 而 peerDependency 在 link: 安装下解析不到（发 npm 后才由宿主提供）。
- * 两个值都由 cordis.patch.yml 给，这里只兜底。
+ * 由 cordis.patch.yml 给，这里只兜底。
  */
 const DEFAULTS = {
-  apiBase: 'http://localhost:8000',
+  // 环境变量是唯一的改法（给开发者用）—— 设置页已经不提供这个字段了
+  apiBase: process.env.CL_API_BASE || 'http://localhost:8000',
   dataDir: '',
   tokenRef: 'CL_TOKEN',
 }
 
-/** 存 token 的凭证名 —— 与 client-api.js 里的 CL_TOKEN 是同一个。 */
-const CL_TOKEN_REF = 'CL_TOKEN'
-
 /**
- * 配置 schema —— 设置页靠它渲染表单。
+ * **没有 Config schema，也没有设置页 section。**
  *
- * `role('secret')` 让 token 走「只写不读」通道：describe 会把它从每一层里
- * 剥掉，只报告「这个字段设没设过」，所以设置页能渲染一个密码框，
- * 而那个值永远不会过线回到浏览器。
+ * 服务端地址和 token 都不再让用户填：
+ *   - 地址是我们定的。填错只会得到「无法连接到 http://localhs:8000」，
+ *     而用户很难一眼看出是自己打错字。
+ *   - token 是登录的产物，用户不该持有它 —— 登录后由 host 侧直接写进
+ *     托管凭证库（见下面的 /auth/verify 路由）。
+ *
+ * 开发时要指向别的服务端，用 CL_API_BASE 环境变量。
  */
-/**
- * 配置 schema —— 设置页靠它渲染表单。
- *
- * **必须是真的 Schemastery 实例**，不能用 JSON-Schema 形状的普通对象：
- * 宿主不认，`installSection` 会静默不生效 —— 既没有卡片也没有报错，
- * 最难查的那种失败。（对照样板：dsh-web-search-deepseek/src/index.ts:63）
- *
- * 而这个包在 `link:` 安装下解析不到（Node 从软链的真实路径往上找
- * node_modules，够不到 profile 那边），所以它必须装在**插件自己的目录**里。
- * 发包时它是 optional peer，由宿主提供。
- *
- * dataDir 不在这里 —— store 在启动时就把它读走了，运行时改不生效，
- * 放进设置页只会让用户改了以为生效。要换目录用 CL_DATA_DIR 环境变量。
- */
-const LOCAL_API = 'http://localhost:8000'
-
-const Config = z.object({
-  // 下拉而不是自由输入：地址填错是最常见的配置事故，而错了之后
-  // 工具报的是「无法连接到 http://localhs:8000」—— 用户很难一眼看出
-  // 是自己打错字。选项固定就没这个问题。
-  apiBase: z.union([
-    z.const(LOCAL_API).description('本地服务端（开发用）'),
-    z.const('https://api.consumer-lens.com').description('线上服务端'),
-  ]).default(LOCAL_API).description('服务端地址'),
-
-  // token 走凭证引用而不是明文字段：role('credential-ref') 让设置页
-  // 渲染成「选一个已存的凭证」，值本身存在 dsh 的托管凭证库里，
-  // 不落进配置文件、也不会随 describe 过线回到浏览器。
-  tokenRef: z.string()
-    .role('credential-ref')
-    .default(CL_TOKEN_REF)
-    .description('访问令牌（凭证名）'),
-})
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SKILLS_DIR = join(HERE, '..', 'skills')
@@ -185,30 +151,6 @@ export function apply(ctx, userConfig) {
   const config = { ...DEFAULTS, ...userConfig }
   const store = createStore(config)
 
-  /**
-   * 注册设置命名空间 —— **设置页那张卡片要两半配对才出现**：
-   * 这里在 Host 注册命名空间，client.js 在浏览器注册同 key 的卡片，
-   * 「插件」标签页把两者配对。只做浏览器那半的话，标签页列不出这个
-   * 命名空间，卡片永远不会被 dispatch（我们之前就是这样，卡片一直没出现）。
-   *
-   * 用 installSection 而不是裸 register：settings 服务不在时它会退回
-   * composition entry，插件照常工作，不需要自己写兜底分支。
-   */
-  let read = null
-  ctx.inject(['settings'], (sub) => {
-    sub.settings.installSection(sub, 'consumer-lens', Config, config, {
-      setSource: (current) => { read = current },
-      onChange: () => {
-        // 原地覆盖：tool 里 config.apiBase 是每次调用现读的，
-        // 所以改完立刻生效，不用重启 dsh、也不用重新注册 tool。
-        // 只覆盖 schema 里有的键 —— dataDir 不在 schema 里，
-        // 用 assign 整份覆盖会把它抹成 undefined。
-        const next = read?.() ?? {}
-        if (typeof next.apiBase === 'string' && next.apiBase) config.apiBase = next.apiBase
-      },
-    })
-  })
-
   // ① tools —— 模型调
   registerRedditAudience(ctx, config)
   registerRedditSearch(ctx, config)
@@ -272,6 +214,77 @@ export function apply(ctx, userConfig) {
           }
 
           /**
+           * 登录 —— 面板上**仅有的两条写路由**，破了「面板只读」的例外。
+           *
+           * 例外是必要的：登录必须发 POST，而它又不能走 call()（那个的第一件
+           * 事是「没有 token 就报错」，正好是登录的前提）。所以走 callAnon()。
+           *
+           * 走 host 代理的理由和 /account 一样，而且更强：verify 的响应里
+           * **带着明文 token**，它必须在这里被消费掉（写进凭证库），
+           * 绝不能过线回浏览器。浏览器只会收到 { ok, phone, remaining }。
+           */
+          if (p.endsWith('/auth/send-code')) {
+            const body = await readBody(req)
+            try {
+              return send(res, 200, await callAnon(config.apiBase, '/v1/auth/send-code', body))
+            } catch (error) {
+              return send(res, 400, {
+                error: String(error?.message ?? error),
+                retryAfter: error?.retryAfter,
+              })
+            }
+          }
+
+          if (p.endsWith('/auth/verify')) {
+            const body = await readBody(req)
+            let out
+            try {
+              out = await callAnon(config.apiBase, '/v1/auth/verify', body)
+            } catch (error) {
+              return send(res, 400, { error: String(error?.message ?? error) })
+            }
+
+            // ★ token 在这里就地消费掉，不回浏览器。
+            const credentials = ctx.get('credentials')
+            if (credentials === undefined) {
+              return send(res, 501, {
+                error: '凭证服务不可用，无法保存登录状态。请用下面的「手动填入 Token」。',
+              })
+            }
+            try {
+              // set() 在只读源遮蔽时会 reject（credentials/src/index.ts:201）——
+              // 写入会「看起来成功了」但 resolve 仍返回被遮蔽的值。
+              // 我们自己就可能是 CL_TOKEN=… dsh 起的，所以这条必须接住。
+              await credentials.set(CL_TOKEN, out.token)
+            } catch (error) {
+              return send(res, 409, {
+                error:
+                  'CL_TOKEN 已由更高优先级的来源（如启动时的环境变量）提供，无法保存登录状态。'
+                  + '请去掉那个环境变量后重试。'
+                  + `（${String(error?.message ?? error)}）`,
+              })
+            }
+            return send(res, 200, {
+              ok: true,
+              phone: out.phone,
+              remaining: out.remaining,
+              isNew: out.is_new,
+            })
+          }
+
+          if (p.endsWith('/auth/logout')) {
+            const credentials = ctx.get('credentials')
+            if (credentials === undefined) return send(res, 200, { ok: true })
+            try {
+              // 空值不能用 set()，那会抛（credentials-local/src/index.ts:642）
+              await credentials.unset(CL_TOKEN)
+            } catch (error) {
+              return send(res, 409, { error: String(error?.message ?? error) })
+            }
+            return send(res, 200, { ok: true })
+          }
+
+          /**
            * 余额 —— **这是唯一一条会出网的面板路由**，其余都只读本地文件。
            *
            * 走 host 代理而不是让浏览器直接打服务端，是为了守住一条约束：
@@ -288,7 +301,11 @@ export function apply(ctx, userConfig) {
             } catch (error) {
               // 把原文交给面板显示 —— call() 的错误已经是给人读的中文，
               // 翻成 500 会把「token 没配」说成「服务器故障」。
-              return send(res, 502, { error: String(error?.message ?? error) })
+              // code 一起带过去：面板靠它把「没登录」显示成登录页而不是错误页。
+              return send(res, 502, {
+                error: String(error?.message ?? error),
+                code: error?.code,
+              })
             }
           }
 
@@ -326,4 +343,18 @@ export function apply(ctx, userConfig) {
 function send(res, code, body) {
   res.writeHead(code, H)
   res.end(JSON.stringify(body))
+}
+
+/** 读完整个请求体再解析。登录是面板上唯一会发 POST 的地方。 */
+async function readBody(req) {
+  const chunks = []
+  for await (const chunk of req) chunks.push(chunk)
+  if (chunks.length === 0) return {}
+  try {
+    // 手动拼字符串而不是 Buffer.concat —— 不依赖 Buffer 这个 Node 全局，
+    // 和这份文件其余部分保持同一套 ESM 约定。
+    return JSON.parse(chunks.map((c) => c.toString('utf8')).join(''))
+  } catch {
+    return {}
+  }
 }

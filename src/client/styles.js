@@ -44,6 +44,39 @@ const S = {
     flex: 'none', background: 'var(--bg-hover, #f0eeea)',
   },
   evRow: { display: 'flex', gap: 10, alignItems: 'flex-start' },
+
+  // ── IG 内嵌原帖 ──────────────────────────────────────────────
+  /** 「▸ 看原帖」/「▾ 收起」—— 轻量，不抢证据正文的注意力。 */
+  igToggle: {
+    appearance: 'none', border: 0, background: 'none', padding: 0,
+    marginTop: 6, font: 'inherit', fontSize: 11.5, lineHeight: 1.5,
+    color: 'var(--dsw-alias-label-tertiary, #888)', cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  igLink: {
+    fontSize: 11.5, color: 'var(--dsw-alias-label-tertiary, #888)',
+    whiteSpace: 'nowrap',
+  },
+  /**
+   * iframe 的容器。**固定高度**：IG embed 自己的高度由内容决定，
+   * 而跨域拿不到它的 scrollHeight，所以只能给一个够用的定值。
+   * 540 能完整显示方图 + 作者行；竖图会裁掉一点，可以接受。
+   */
+  igFrameWrap: {
+    border: '0.5px solid var(--dsw-alias-border-l2, #e5e3df)',
+    borderRadius: 8, overflow: 'hidden',
+    background: 'var(--bg-hover, #f0eeea)',
+    maxWidth: 400,
+  },
+  igFrame: {
+    width: '100%', height: 540, border: 0, display: 'block',
+  },
+  /** 兜底那行 —— 白屏检测不到，所以这行常驻。 */
+  igFoot: {
+    display: 'flex', alignItems: 'center', gap: 8, maxWidth: 400,
+    marginTop: 4, fontSize: 11.5, lineHeight: 1.5,
+    color: 'var(--dsw-alias-label-tertiary, #888)',
+  },
   // 中文意思 —— 卖家要抄进详情页的就是这句，所以它不能比原文更弱。
   zhText: { fontSize: 12.5, opacity: 0.85, lineHeight: 1.6, marginTop: 3 },
   empty: { padding: 24, opacity: 0.6, lineHeight: 1.8 },
