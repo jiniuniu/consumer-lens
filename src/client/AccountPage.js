@@ -88,14 +88,8 @@ function AccountPage(props) {
 
   const by = Object.entries(acc?.by_platform ?? {})
 
-  /**
-   * 对用户只讲**积分**，不讲钱 —— 1 积分 = $0.001 成本。
-   *
-   * 不能拿 calls 当积分：单价按平台分档（IG 的两个端点是 $0.002 和 $0.008，
-   * 是 Reddit/TK 的 2～8 倍），同样「1 次调用」花掉的积分不一样。
-   * 所以积分一律从**花费**换算，那才是用户真正被扣的东西。
-   */
-  const credits = (usd) => Math.round((usd ?? 0) * 1000)
+  // 积分由服务端算好（`total_credits` / `by_platform[].credits`）——
+  // 换算留在服务端，上游进价才不会过线到浏览器。
 
   return el('div', null,
     el('h2', { style: S.h1 }, '我的'),
@@ -106,7 +100,7 @@ function AccountPage(props) {
         el('span', { style: S.statV }, acc?.remaining ?? '—'),
         el('span', { style: S.statL }, '剩余积分')),
       el('div', { style: S.statBox },
-        el('span', { style: S.statV }, credits(acc?.total_spent_usd)),
+        el('span', { style: S.statV }, acc?.total_credits ?? '—'),
         el('span', { style: S.statL }, '累计消耗')),
       el('div', { style: S.statBox },
         el('span', { style: S.statV }, acc?.total_calls ?? '—'),
@@ -127,7 +121,7 @@ function AccountPage(props) {
               },
                 el('span', { style: { ...S.xname, flex: 1 } }, PLATFORM_LABEL[k] ?? k),
                 el('span', { style: { fontSize: 12, opacity: 0.75 } },
-                  `${v.calls} 次查询 · ${credits(v.spent_usd)} 积分`),
+                  `${v.calls} 次查询 · ${v.credits ?? 0} 积分`),
               ),
             ),
           ),
