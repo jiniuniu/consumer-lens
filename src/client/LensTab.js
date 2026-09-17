@@ -10,7 +10,7 @@ import { el, useState, useEffect, useCallback, useRef } from './react.js'
 import { POLL_MS, API } from './constants.js'
 import { S } from './styles.js'
 import { call, sendToConversation } from './api.js'
-import { MODULES, SIGNAL, ACCOUNT, rowMeta, EmptyHint } from './modules.js'
+import { MODULES, SIGNAL, TK_COMMENTS, ACCOUNT, rowMeta, EmptyHint } from './modules.js'
 import { appIcon, accountIcon } from './icons.js'
 import { TreeNode } from './TreeNode.js'
 import { AccountPage } from './AccountPage.js'
@@ -18,6 +18,7 @@ import { AudienceReport } from './report/audience.js'
 import { SignalReport } from './report/signal.js'
 import { Report } from './report/reddit-pain.js'
 import { IgReport } from './report/ig-pain.js'
+import { TkPane } from './tk/TkPane.js'
 
 function LensTab(props) {
   const ctx = props.ctx
@@ -46,7 +47,7 @@ function LensTab(props) {
     const next = {}
     // 信号不在 MODULES 里（它没有 grid 入口），但人群洞察那棵树要用它的
     // 数据，所以这里显式带上 —— 漏在这儿的话树只剩根节点，而且是静默的。
-    const kinds = [...MODULES.filter((m) => m.wired).map((m) => m.id), SIGNAL]
+    const kinds = [...MODULES.filter((m) => m.wired).map((m) => m.id), SIGNAL, TK_COMMENTS]
     for (const kind of kinds) {
       try {
         next[kind] = await call(`/list?kind=${encodeURIComponent(kind)}`) ?? []
@@ -132,10 +133,20 @@ function LensTab(props) {
   }, [mod, pick, pickKind])
 
 
-  /** 开跑 = 往对话框发指令。面板自己从不跑分析。 */
-  const run = useCallback((moduleId, topic) => {
-    if (!sessionId) return
-    sendToConversation(ctx, sessionId, `/${moduleId} ${topic}`)
+  /**
+   * 开跑 = 往对话框发指令。面板自己从不跑分析。
+   *
+   * 返回一个 Promise<boolean> —— 调用方靠它决定要不要把「等待中」状态摘掉。
+   * （TK 那格的「分析评论」按钮会等这个：发失败还留着 pending 的话，
+   * 按钮会永远卡在「已提交，等待中…」，而用户看不出是发送失败了。）
+   */
+  const run = useCallback(async (moduleId, topic) => {
+    if (!sessionId) return false
+    try {
+      return await sendToConversation(ctx, sessionId, `/${moduleId} ${topic}`)
+    } catch {
+      return false
+    }
   }, [ctx, sessionId])
 
   // ── ① grid：选模块 ──
@@ -196,7 +207,28 @@ function LensTab(props) {
 
   // ── ② 模块内：左 list + 右 report ──
   const m = MODULES.find((x) => x.id === mod)
-  const rows = lists[mod] ?? []
+  let rows = lists[mod] ?? []
+
+  /**
+   * TK 的左列要显示「这次搜索里已分析了几条」。
+   *
+   * 这个数**算不进 store 的投影** —— 它是两个 kind 求交集的结果
+   * （搜索的 videos[] × 评论分析的 aweme_id），而 store.list() 一次只看
+   * 一个目录。但左列又不能为了这个数去读每次搜索的全文（那是几十 KB × N）。
+   *
+   * 所以用 from_run 近似：挂在这次搜索下面的分析，**按 aweme_id 去重**。
+   * 去重是必须的 —— 同一条视频可以分析多次（永远新建、从不覆盖），
+   * 不去重的话左列会显示「● 5」而列表上只有 2 条打了勾。
+   */
+  if (mod === 'cl-tk-search') {
+    const analyses = lists[TK_COMMENTS] ?? []
+    rows = rows.map((r) => ({
+      ...r,
+      analyzed: new Set(
+        analyses.filter((a) => a.from_run === r.id && a.aweme_id).map((a) => a.aweme_id),
+      ).size,
+    }))
+  }
 
   /**
    * 人群洞察的左列是一棵树：人群 → 信号 → 痛点，缩进即血缘。
@@ -306,7 +338,21 @@ function LensTab(props) {
               })
             : (pickKind ?? mod) === 'cl-ig-pain'
               ? el(IgReport, { r: report })
-              : el(Report, { r: report }),
+              /**
+               * TK 那一格不是「一份报告」，是一棵两层的东西：
+               * 视频列表 → 某条视频的详情 + 评论聚类。所以交给 TkPane
+               * 自己管内部状态（见那个文件顶部关于「为什么不复用 TreeNode」）。
+               *
+               * `search` 要带上 id —— TkPane 发 /cl-tk-comments 时要把它
+               * 当 from_run 传过去，血缘才串得起来。
+               */
+              : (pickKind ?? mod) === 'cl-tk-search'
+                ? el(TkPane, {
+                    search: { ...report, id: pick },
+                    analyses: lists[TK_COMMENTS] ?? [],
+                    onRun: run,
+                  })
+                : el(Report, { r: report }),
     ),
   )
 }

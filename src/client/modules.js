@@ -71,7 +71,28 @@ const MODULES = [
     id: 'cl-ig-pain', name: 'IG 痛点', icon: 'instagram', wired: true,
     blurb: '刷到的人在顾虑什么',
   },
+  /**
+   * TikTok —— **一格装两步**（搜索 → 评论），和人群洞察同一个道理：
+   * 后一步的输入来自前一步的产物，拆成两格会让漏斗被 grid 切断。
+   *
+   * 但树的形状和人群洞察**不同**：那边三层都是一次运行（audience → signal
+   * → pain），这边中间那层「视频」不是运行，而是搜索结果里的一条记录。
+   * 所以 TK 不复用 TreeNode，见 client/tk/。
+   */
+  {
+    id: 'cl-tk-search', name: 'TikTok', icon: 'tiktok', wired: true,
+    blurb: '刷到的人在问什么',
+  },
 ]
+
+
+/**
+ * 评论聚类不是 grid 上的入口 —— 它只能从某条视频点进去。
+ *
+ * 和 SIGNAL 同一个道理：它是独立的 kind（自己的目录、自己的 list），
+ * 但没有格子。TK 那棵树要拉它的数据来标 ●/○。
+ */
+const TK_COMMENTS = 'cl-tk-comments'
 
 
 /**
@@ -100,6 +121,21 @@ const ACCOUNT = 'cl-account'
  * 和 store.list() 的投影一一对应，那边加字段这边才有得显示。
  */
 function rowMeta(mod, row, inTree = false) {
+  if (mod === 'cl-tk-search') {
+    return [
+      `${row.total ?? 0} 条视频`,
+      // 已分析数由面板算（要跟评论那份 list 求交集），store 投影里没有
+      row.analyzed ? `● ${row.analyzed}` : null,
+      ago(row.saved_at),
+    ]
+  }
+  if (mod === 'cl-tk-comments') {
+    return [
+      `${row.groups ?? 0} 组`,
+      row.comments ? `${row.comments} 条评论` : null,
+      ago(row.saved_at),
+    ]
+  }
   if (mod === 'cl-ig-pain') {
     return [
       `${row.pains ?? 0} 簇`,
@@ -153,6 +189,33 @@ function EmptyHint({ mod, name }) {
    * 用错的代价是静默的：想改产品却跑了 IG，拿回来一堆买前顾虑，
    * 报告看着挺像回事，只是没有一条指向产品该改什么。
    */
+  /**
+   * TK 的空状态要说清它和另外两格的差别：**这里的人 99% 没买过**。
+   *
+   * 用错的代价和 IG 那条一样是静默的：想知道产品该改什么却来了 TK，
+   * 拿回一堆「求链接」和玩梗，报告看着热闹，只是没有一条指向产品。
+   */
+  if (mod === 'cl-tk-search') {
+    return el(Fragment, null,
+      '还没跑过 ', el('b', null, name), '。', el('br'), el('br'),
+      '在对话框里跑 ', cmd('/cl-tk-search <品类>'),
+      '，结果几秒后自动出现在这里。',
+
+      el('div', { style: { ...S.note, textAlign: 'left', marginTop: 18 } },
+        el('div', { style: { fontWeight: 600, marginBottom: 6 } },
+          '两步在一格里：搜视频 → 拆评论区'),
+        el('div', { style: { margin: '4px 0', lineHeight: 1.7 } },
+          '先搜出这个品类在带货的视频，再点任意一条拆它的评论区 —— ',
+          '产出是', el('b', null, '内容选题'), '和', el('b', null, '购买顾虑'), '。'),
+        el('div', { style: { margin: '4px 0', lineHeight: 1.7, opacity: 0.75 } },
+          'TK 评论区的人 99% 没买过，他们的负面是',
+          el('b', null, '怀疑'), '（「真的防水吗」）不是',
+          el('b', null, '失望'), '（「第二天就漏了」）。',
+          '想知道产品该改什么，走 ', el('b', null, '痛点洞察'), '。'),
+      ),
+    )
+  }
+
   if (mod === 'cl-ig-pain') {
     return el(Fragment, null,
       '还没跑过 ', el('b', null, name), '。', el('br'), el('br'),
@@ -207,5 +270,5 @@ function EmptyHint({ mod, name }) {
 }
 
 
-export { MODULES, SIGNAL, ACCOUNT, rowMeta, EmptyHint }
+export { MODULES, SIGNAL, TK_COMMENTS, ACCOUNT, rowMeta, EmptyHint }
 

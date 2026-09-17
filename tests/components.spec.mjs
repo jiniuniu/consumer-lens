@@ -18,6 +18,7 @@ const R = new URL('../src/client/', import.meta.url).pathname
 const realUseState = React.useState
 React.useState = (v) => [typeof v === 'function' ? v() : v, () => {}]
 React.useCallback = (f) => f
+React.useMemo = (f) => f()
 React.useRef = (v) => ({ current: v ?? 0 })
 
 /**
@@ -149,6 +150,88 @@ t('AccountPage', el(AccountPage, {}))
 t('LoginPanel(未登录)', el(LoginPanel, { configured: false }), ['手机号', '获取验证码', '登录 / 注册'])
 t('LoginPanel(已登录)', el(LoginPanel, { configured: true }), ['已登录', '退出登录'])
 
+console.log('\nTK')
+
+/** 一条视频，字段照 cl-tk-search 的落盘形状。 */
+const tkVideo = {
+  aweme_id: '7610515484366097678',
+  desc: 'Perfect outdoor chairs for summer',
+  url: 'https://www.tiktok.com/@dyl/video/7610515484366097678',
+  author_name: 'dyl', follower_count: 54945,
+  play_count: 25352235, digg_count: 499514, comment_count: 1717,
+  engage_rate: 1.98, create_time: '2026-02-24',
+  type: '种草', note: '泛带货号的口袋推荐位',
+}
+
+/** 一份评论分析，形状照 SKILL.md §7 那个 JSON。 */
+const tkReport = {
+  video: { id: '7610515484366097678', url: 'u', author: '@dyl', name: '露营椅评论区' },
+  audience: {
+    stats: [{ n: '240', label: '头部评论', sub: '平台共 891 条' }],
+    topics_title: '他们走到哪一步了',
+    topics_hole: ['240', '条'],
+    topics: [
+      { label: '只说想要，没说为什么', n: 149, pct: 62, cls: 'love' },
+      { label: '多少钱', n: 20, pct: 8, cls: 'ask', sub: true },
+    ],
+    // ⚠️ 语种 bars 没有 cls —— 走 clsColor 会拿到浅灰，画在浅灰 track 上
+    // 等于隐形，所以 Bars 必须在没 cls 时用品牌色。这条数据就是那个用例。
+    bars_title: '他们说的什么语言',
+    bars: [{ label: '英语', n: 183, pct: 76 }],
+    reads: ['这 240 条是平台按热度排在最前面的，不是随机样本。'],
+  },
+  groups: [{
+    title: '他们被什么打动', hint: '171 条心动', count: 171,
+    topics: [{
+      name: '他们想到了具体的谁', count: 9, likes: 1583,
+      quotes: [{ text: 'yo necesito uno', zh: '我就需要一个', likes: 1568 }],
+    }],
+  }],
+  data_note: { caveats: ['平台给的是热度混排，不是随机样本'] },
+}
+
+const { VideoList } = await import(R + 'tk/VideoList.js')
+const { VideoDetail } = await import(R + 'tk/VideoDetail.js')
+const { CommentReport } = await import(R + 'tk/CommentReport.js')
+const { TkPane } = await import(R + 'tk/TkPane.js')
+const { Donut, Bars } = await import(R + 'tk/charts.js')
+
+t('VideoList(未分析)', el(VideoList, {
+  data: { slug: 's', query: 'camping chair', videos: [tkVideo] },
+  done: new Set(), onOpen() {},
+}), ['○ 未分析', '种草', 'dyl'])
+
+t('VideoList(已分析)', el(VideoList, {
+  data: { slug: 's', query: 'camping chair', videos: [tkVideo] },
+  done: new Set(['7610515484366097678']), onOpen() {},
+}), ['● 已分析', '只看已分析'])
+
+t('VideoDetail(还没分析)', el(VideoDetail, {
+  v: tkVideo, report: null, analyzed: false, busy: false,
+  onBack() {}, onAnalyze() {},
+}), ['还没分析过', '分析评论', '/cl-tk-comments'])
+
+t('VideoDetail(已分析)', el(VideoDetail, {
+  v: tkVideo, report: tkReport, analyzed: true, busy: false,
+  onBack() {}, onAnalyze() {},
+}), ['他们被什么打动', '他们走到哪一步了'])
+
+// 样本口径必须出现在报告里 —— 少了它，读的人会把「热评里有一簇」
+// 读成「用户普遍认为」（SKILL.md §4 的推论）
+t('CommentReport', el(CommentReport, { r: tkReport }),
+  ['他们被什么打动', '171 条心动', '热度混排'])
+
+t('Donut', el(Donut, { topics: tkReport.audience.topics, hole: ['240', '条'] }),
+  ['只说想要', '└ 多少钱'])
+t('Bars', el(Bars, { bars: tkReport.audience.bars }), ['英语'])
+
+// TkPane 三态里最容易错的一个：search 还没读回来
+t('TkPane(读取中)', el(TkPane, { search: null, analyses: [], onRun() {} }), ['读取中'])
+t('TkPane(列表)', el(TkPane, {
+  search: { id: 'tksearch_20260917_aaaa', query: 'camping chair', videos: [tkVideo] },
+  analyses: [], onRun() {},
+}), ['○ 未分析'])
+
 // 账户图标三态 —— 角标是「要不要点我」的唯一提示，画错了新用户就卡住
 /**
  * 「没登录」必须走登录页，不能走错误页。
@@ -208,8 +291,22 @@ if (!rdMeta.includes('痛点')) { console.log('  ✗ Reddit 的列表行不对')
 
 const names = MODULES.map((m) => `${m.name}(${m.icon})`).join(' ')
 console.log(`  MODULES         ${names}`)
-if (MODULES.length !== 3) { console.log('  ✗ 期望三格'); fail += 1 }
+if (MODULES.length !== 4) { console.log('  ✗ 期望四格'); fail += 1 }
 if (!MODULES.some((m) => m.icon === 'instagram')) { console.log('  ✗ IG 那格没用 instagram 图标'); fail += 1 }
+if (!MODULES.some((m) => m.icon === 'tiktok')) { console.log('  ✗ TK 那格没用 tiktok 图标'); fail += 1 }
+
+/**
+ * 每格的图标必须**互不相同** —— 宫格是靠图标认路的，两格同图标等于没分开
+ * （modules.js 顶部那条约定）。这比数格子更该守：加一格时最容易犯的错
+ * 是随手复用一个已有图标，而那个错在截图上不明显。
+ *
+ * 例外：人群洞察和痛点洞察都是 reddit —— 它们是同一个平台的两个问题，
+ * 且是这条约定写下之前就有的形态。所以只查**非 reddit** 的格子不重复。
+ */
+const nonReddit = MODULES.filter((m) => m.icon !== 'reddit').map((m) => m.icon)
+if (new Set(nonReddit).size !== nonReddit.length) {
+  console.log('  ✗ 有两格用了同一个图标'); fail += 1
+}
 
 const ig = appIcon('instagram', 56)
 console.log(`  IG 图标         ${ig.type} · ${String(ig.props.style.background).slice(0, 28)}…`)

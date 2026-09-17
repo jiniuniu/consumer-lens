@@ -48,6 +48,8 @@ const KINDS = {
   'cl-reddit-signal': 'sig',
   'cl-reddit-pain': 'pain',
   'cl-ig-pain': 'igpain',
+  'cl-tk-search': 'tksearch',
+  'cl-tk-comments': 'tkcmt',
 }
 
 /**
@@ -164,6 +166,46 @@ export function createStore(config) {
               // 避免同一批版块重复挖（那是纯粹的额度浪费，而且是静默的：
               // 跑出来的报告看着正常，只是内容跟上次几乎一样）。
               subreddits: d.meta?.subreddits ?? [],
+            }
+          }
+
+          /**
+           * 一次搜索。videos[] 不带出来 —— 那是几十 KB，左列用不上，
+           * 展开时走 read() 拿全文。
+           */
+          if (kind === 'cl-tk-search') {
+            const videos = d.videos ?? []
+            return {
+              ...base,
+              name: d.query ?? slug,
+              total: videos.length,
+              // 搜了哪几个词 —— 重跑时避免重复搜同一批
+              terms: d.terms ?? [],
+            }
+          }
+
+          /**
+           * 一份评论分析。
+           *
+           * ★ `aweme_id` 是这条投影存在的理由：面板靠它给视频列表标 ●/○。
+           *
+           * 老 tk-studio 用 `<aweme_id>.json` 当文件名，于是「分析过没有」
+           * = 文件在不在，一次 readdir 求交集就出来了。这里文件名是 run_id
+           * （永远新建、从不覆盖，见上面 write() 的注释），那条捷径没了 ——
+           * 所以必须把 aweme_id 投影出来，让面板在内存里求交集。
+           * 漏掉这个字段的话，树连不起来，而且是静默的：列表是好的，
+           * 只是每条视频都显示「未分析」。
+           */
+          if (kind === 'cl-tk-comments') {
+            const groups = d.groups ?? []
+            return {
+              ...base,
+              name: d.video?.name ?? slug,
+              aweme_id: d.video?.id ?? null,
+              groups: groups.length,
+              // 这份分析读了多少条评论 —— 判断覆盖面
+              comments: d.audience?.stats?.[0]?.n ?? null,
+              from_run: d.from_run ?? null,
             }
           }
 

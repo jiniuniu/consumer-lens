@@ -14,6 +14,8 @@
  * 和 `ctx.settings`（User-settings seam）—— 它们之所以是 seam，
  * 正是因为可替换（缺了实现也能跑，退回环境变量）。
  */
+import http from 'node:http'
+import https from 'node:https'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +29,9 @@ import { register as registerRedditSearch } from './tools/cl-reddit-search.js'
 import { register as registerRedditComments } from './tools/cl-reddit-comments.js'
 import { register as registerIgHashtag } from './tools/cl-ig-hashtag.js'
 import { register as registerIgComments } from './tools/cl-ig-comments.js'
+import { register as registerTkSearch } from './tools/cl-tk-search.js'
+import { register as registerTkVideo } from './tools/cl-tk-video.js'
+import { register as registerTkComments } from './tools/cl-tk-comments.js'
 
 export const name = 'consumer-lens'
 
@@ -140,9 +145,100 @@ const SKILLS = [
     invocation: { modelInvocable: true, userInvocable: true },
     source: 'bundled',
   },
+  {
+    name: 'cl-tk-search',
+    description:
+      '在 TikTok 上找某个品类的带货视频 —— 先把意图拆成几个英文搜索词，逐个取数，'
+      + '规则筛掉低互动的（播放<5万、互动率<0.5%），再逐条读文案判断哪些是真种草'
+      + '（而不是氛围/蹭标签/搬运），DIY 类要留下 —— 它说明市面上买不到合适的。'
+      + '结果落盘后面板上可以点开任意一条接着拆它的评论区。'
+      + '触发词：/cl-tk-search、找XX的种草视频、TK上谁在推XX、搜下XX的爆款、'
+      + '看看XX在TikTok怎么样。',
+    invocation: { modelInvocable: true, userInvocable: true },
+    source: 'bundled',
+  },
+  {
+    name: 'cl-tk-comments',
+    description:
+      '给一个 TikTok 视频 id（或链接），先拉视频详情看它在讲什么，再抓评论区、'
+      + '聚类「评论区到底在讨论什么」—— 不预设是痛点，可能是羡慕/玩梗/质疑/跑题，'
+      + '每种指向不同用途（选品/内容/投放/竞品）。这里的人 99% 没买过，'
+      + '他们的负面是怀疑不是失望。'
+      + '触发词：/cl-tk-comments、扒这条视频的评论、这个视频评论区在说什么、'
+      + '看下这条TK的痛点、评论聚类。',
+    invocation: { modelInvocable: true, userInvocable: true },
+    source: 'bundled',
+  },
 ]
 
 const H = { 'content-type': 'application/json; charset=utf-8' }
+
+/**
+ * TikTok 封面缓存。同一条视频不重复请求 —— oEmbed 的签名 48h 过期，
+ * 缓存 30 分钟很安全。
+ */
+const covers = new Map()
+const COVER_TTL = 30 * 60 * 1000
+
+/**
+ * 只认规范的 TikTok 视频页 URL —— **这是 SSRF 防线，不能省。**
+ *
+ * /cover 路由拿查询串里的 URL 去发请求，不卡死格式的话，本机任何进程都能
+ * 让 dsh 去打任意地址（插件路由不继承 /api 的 Host 信任围栏）。
+ */
+const TT_URL = /^https:\/\/www\.tiktok\.com\/@[\w.-]+\/video\/\d+$/
+
+/**
+ * 取一个 https JSON。
+ *
+ * **不能用全局 fetch** —— Node 的 undici 不读 HTTP(S)_PROXY 环境变量，
+ * 在需要代理的网络里会直接超时（实测 10s connect timeout）。这里手动走
+ * CONNECT 隧道，零依赖，没配代理时退回普通请求。
+ * （照抄 dsh-tk-studio，那边已经跑了一段时间。）
+ */
+function getJson(target, timeoutMs = 8000) {
+  const url = new URL(target)
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy
+    || process.env.HTTP_PROXY || process.env.http_proxy
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), timeoutMs)
+    const done = (fn) => (v) => { clearTimeout(timer); fn(v) }
+    const ok = done(resolve)
+    const fail = done(reject)
+
+    const read = (options) => {
+      https.request(options, (res) => {
+        let body = ''
+        res.on('data', (c) => { body += c })
+        res.on('end', () => {
+          try { ok(JSON.parse(body)) } catch { fail(new Error('bad json')) }
+        })
+      }).on('error', fail).end()
+    }
+
+    const direct = {
+      host: url.hostname,
+      path: url.pathname + url.search,
+      headers: { 'user-agent': 'Mozilla/5.0' },
+    }
+
+    if (proxy === undefined || proxy === '') { read(direct); return }
+
+    const px = new URL(proxy)
+    http.request({
+      host: px.hostname,
+      port: px.port || 80,
+      method: 'CONNECT',
+      path: `${url.hostname}:443`,
+    })
+      .on('connect', (_res, socket) => {
+        read({ ...direct, socket, servername: url.hostname, agent: false })
+      })
+      .on('error', fail)
+      .end()
+  })
+}
 
 export function apply(ctx, userConfig) {
   // tools 闭包捕获的是这个对象的**引用**，所以用户改配置时必须
@@ -157,6 +253,9 @@ export function apply(ctx, userConfig) {
   registerRedditComments(ctx, config)
   registerIgHashtag(ctx, config)
   registerIgComments(ctx, config)
+  registerTkSearch(ctx, config)
+  registerTkVideo(ctx, config)
+  registerTkComments(ctx, config)
   registerSave(ctx, config, store)
 
   // ② skill provider —— SKILL.md 作为包资源打进去，npm 装完自动出现在目录里
@@ -307,6 +406,37 @@ export function apply(ctx, userConfig) {
                 code: error?.code,
               })
             }
+          }
+
+          /**
+           * TikTok 封面 —— 走 oEmbed 实时换。
+           *
+           * **这是面板第二条会出网的路由**（第一条是 /account），同样是必要的
+           * 例外：结果文件里**不存**封面 URL —— 那是签名链接，原始封面 5 小时、
+           * oEmbed 的 48 小时就过期，存下来注定是一屏破图。所以只能渲染时现取。
+           *
+           * 取不到就把 null 记进缓存，避免每次渲染都重试一个死链。
+           */
+          if (p.endsWith('/cover')) {
+            const v = url.searchParams.get('url') ?? ''
+            // SSRF 防线，见 TT_URL 的注释
+            if (!TT_URL.test(v)) return send(res, 400, { error: 'invalid url' })
+
+            const cached = covers.get(v)
+            if (cached !== undefined && Date.now() - cached.at < COVER_TTL) {
+              return send(res, 200, { thumb: cached.thumb })
+            }
+            let thumb = null
+            try {
+              const j = await getJson(
+                `https://www.tiktok.com/oembed?url=${encodeURIComponent(v)}`,
+              )
+              thumb = j?.thumbnail_url ?? null
+            } catch {
+              // 取不到也记进缓存 —— 否则每次渲染都会重试一个死链
+            }
+            covers.set(v, { thumb, at: Date.now() })
+            return send(res, 200, { thumb })
           }
 
           // kind 决定读哪个模块的数据。第一版只有 Reddit，所以它是默认值。

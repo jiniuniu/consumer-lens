@@ -11,6 +11,6 @@
 import React from 'react'
 
 export const el = React.createElement
-export const { useState, useEffect, useCallback, useRef, Fragment } = React
+export const { useState, useEffect, useCallback, useMemo, useRef, Fragment } = React
 export default React
 

@@ -153,6 +153,98 @@ function checkIgPain(data) {
   return pains.length
 }
 
+/**
+ * TK 搜索结果。
+ *
+ * `cover` / `play_addr` **卡成禁止字段** —— 那是 CDN 签名链接，几小时就失效，
+ * 存下来注定是一屏破图。面板的封面走 host 的 oEmbed 代理实时换
+ * （见 index.js 的 /cover 路由），不从这里读。
+ */
+function checkTkSearch(data) {
+  const videos = data?.videos
+  if (!Array.isArray(videos) || videos.length === 0) {
+    throw new Error('data.videos 必须是非空数组 —— 面板要靠它渲染视频列表')
+  }
+  const TYPES = ['种草', '评测', 'DIY', '其他']
+  videos.forEach((v, i) => {
+    if (!v?.aweme_id) {
+      throw new Error(`videos[${i}] 缺 aweme_id —— 面板靠它连评论分析，必须逐条透传`)
+    }
+    if (v.type && !TYPES.includes(v.type)) {
+      throw new Error(
+        `视频「${v.aweme_id}」的 type 是「${v.type}」—— 只能填 ${TYPES.join(' / ')}，面板按它上色`,
+      )
+    }
+    if (v.cover || v.play_addr) {
+      throw new Error(
+        `视频「${v.aweme_id}」带了 cover / play_addr —— 这两个字段不要存。`
+        + '它们是 CDN 签名链接，几小时就失效，存下来是死链；'
+        + '面板的封面走实时代理，不读这里。把这两个字段删掉再存。',
+      )
+    }
+  })
+  if (!data?.query) throw new Error('缺 query（搜的是什么，面板标题要用）')
+  return videos.length
+}
+
+/**
+ * TK 评论聚类。
+ *
+ * `video.id` 卡成必填 —— 面板靠它把这份分析挂回搜索结果里的那条视频
+ * （store.list() 投影出的 aweme_id 就是从这里读的）。少了它这份分析
+ * 在树上是孤儿：能打开，但那条视频永远显示「未分析」。
+ *
+ * `zh` 必填的理由和 IG 那份一样：读面板的人不一定看得懂英文，
+ * 而这些原话正是卖家要抄进详情页的东西 —— 看不懂就用不上。
+ */
+function checkTkComments(data) {
+  const groups = data?.groups
+  if (!Array.isArray(groups) || groups.length === 0) {
+    throw new Error('data.groups 必须是非空数组 —— 面板要靠它渲染评论聚类')
+  }
+  if (!data?.video?.id) {
+    throw new Error(
+      '缺 video.id（那串 19 位数字）—— 面板靠它把这份分析挂回搜索结果里的那条视频，'
+      + '少了它这条视频在列表上会永远显示「未分析」',
+    )
+  }
+
+  const CLS = ['ask', 'gripe', 'rival', 'love', 'noise', 'none']
+  for (const t of data.audience?.topics ?? []) {
+    if (t?.cls && !CLS.includes(t.cls)) {
+      throw new Error(
+        `画像分档「${t.label}」的 cls 是「${t.cls}」—— 只能填 ${CLS.join(' / ')}，面板按它上色`,
+      )
+    }
+  }
+
+  groups.forEach((g, i) => {
+    if (!g?.title) throw new Error(`groups[${i}] 缺 title`)
+    const topics = g.topics ?? []
+    if (topics.length === 0) {
+      throw new Error(`分组「${g.title}」没有 topics —— 每组都要拆出话题`)
+    }
+    topics.forEach((t) => {
+      const quotes = t?.quotes ?? []
+      if (quotes.length === 0) {
+        throw new Error(`话题「${t?.name ?? '?'}」没有 quotes —— 每个话题都要挂逐字原话`)
+      }
+      quotes.forEach((q, k) => {
+        if (!q?.text) {
+          throw new Error(`话题「${t.name}」的 quotes[${k}] 缺 text（逐字原话）`)
+        }
+        if (!q?.zh) {
+          throw new Error(
+            `话题「${t.name}」的 quotes[${k}] 缺 zh —— 中文意思是必填的，英文原话也要给`
+            + '（读面板的人不一定看得懂英文，而这些原话是要抄进详情页的）',
+          )
+        }
+      })
+    })
+  })
+  return groups.length
+}
+
 export function register(ctx, config, store) {
   ctx.tools.register({
     name: 'cl_save',
@@ -164,10 +256,14 @@ export function register(ctx, config, store) {
       properties: {
         kind: {
           type: 'string',
-          enum: ['cl-reddit-audience', 'cl-reddit-signal', 'cl-reddit-pain', 'cl-ig-pain'],
+          enum: [
+            'cl-reddit-audience', 'cl-reddit-signal', 'cl-reddit-pain', 'cl-ig-pain',
+            'cl-tk-search', 'cl-tk-comments',
+          ],
           description:
             '数据类型 —— 人群定位用 cl-reddit-audience，选品信号用 cl-reddit-signal，'
-            + 'Reddit 痛点用 cl-reddit-pain，Instagram 痛点用 cl-ig-pain',
+            + 'Reddit 痛点用 cl-reddit-pain，Instagram 痛点用 cl-ig-pain，'
+            + 'TikTok 视频搜索用 cl-tk-search，TikTok 评论聚类用 cl-tk-comments',
         },
         slug: {
           type: 'string',
@@ -195,6 +291,14 @@ export function register(ctx, config, store) {
             + ' cl-ig-pain：含 product、pains[]（每簇有 title、description、frequency、'
             + 'evidence[]，每条证据要有 text 逐字原话 + zh 中文 + code + url + thumbnail_url）、'
             + 'stats（把工具输出的统计原样抄过来）、caveats[]。'
+            + ' cl-tk-search：含 query、terms[]、stats{fetched,after_rules,kept}、'
+            + 'videos[]（每条要有 aweme_id、desc、url、author_name、play_count、digg_count、'
+            + 'comment_count、engage_rate、create_time、lang、type 四选一、note 一句判断）。'
+            + '⚠️ 不要存 cover / play_addr，那是几小时就失效的签名链接。'
+            + ' cl-tk-comments：含 video{id,url,author,name}、analyzed_at、'
+            + 'audience{stats[],topics[],topics_title,topics_hole,bars[],bars_title,reads[]}、'
+            + 'groups[]（每组 title + hint + topics[]，每个 topic 有 name/count/likes/'
+            + 'quotes[]，每条 quote 要有 text 逐字原话 + zh 中文 + likes）、data_note{caveats[]}。'
             + '其余字段透传。',
         },
       },
@@ -209,6 +313,8 @@ export function register(ctx, config, store) {
         'cl-reddit-audience': checkAudience,
         'cl-reddit-signal': checkSignal,
         'cl-ig-pain': checkIgPain,
+        'cl-tk-search': checkTkSearch,
+        'cl-tk-comments': checkTkComments,
       }[kind] ?? checkPain
       const groups = check(data)
 
@@ -235,6 +341,8 @@ export function register(ctx, config, store) {
           'cl-reddit-audience': '个版块',
           'cl-reddit-signal': '条信号',
           'cl-ig-pain': '簇痛点',
+          'cl-tk-search': '条视频',
+          'cl-tk-comments': '组评论聚类',
         }[args?.kind] ?? '条痛点'
         const next = args?.kind === 'cl-reddit-audience'
           ? '\n告诉用户：面板上勾选要深挖的版块，提交后接着跑 /cl-reddit-signal。'
