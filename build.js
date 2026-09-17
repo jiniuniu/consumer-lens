@@ -20,6 +20,16 @@
  *
  * Host 半边（`src/index.js` 那棵树）**不打包** —— 它跑在 Node 里，
  * ESM import 原生就能解析，打包只会让栈帧变难读。照原样拷过去。
+ *
+ * ⚠️ **package.json 的 `prepare` 这一行不能删。**
+ *
+ * `lib/` 不进 git（产物，diff 噪声大）但进 npm 包（`files` 里有它）。
+ * 而 README 和 install.sh 的主路径是 `github:jiniuniu/consumer-lens` ——
+ * 那条路拿到的是**仓库快照，没有 lib/**，全靠 npm 装完自动跑 `prepare`
+ * 现场构建出来。
+ *
+ * 删掉 `prepare` 的后果：从 GitHub 装只拿到 8 个文件，插件加载不了，
+ * **而且不报错** —— 表现为面板一片空白。实测踩过。
  */
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
